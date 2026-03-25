@@ -16,7 +16,11 @@ ASVspoof2019 (Logical Access)
 
 ## Results
 The model is able to distinguish between real and fake audio with decent accuracy.  
-(You can add exact numbers here later)
+Train Loss: 0.0450
+Train Accuracy: 0.9854
+Dev Accuracy: 0.9844
+
+Final Evaluation Accuracy (LA_eval): 0.9610455240956245
 
 ## Notes
 - Dataset is not included because it is too large
