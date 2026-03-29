@@ -3,9 +3,6 @@
 # started
 # Import all the required libraries
 
-# In[4]:
-
-
 import torch
 import pandas as pd
 import numpy as np
@@ -24,9 +21,6 @@ from torchvision import models
 
 
 # Loading the audio files
-
-# In[5]:
-
 
 def load_audio_files(protocol_file, audio_folder):
 
@@ -52,13 +46,10 @@ def load_audio_files(protocol_file, audio_folder):
 
 
 # O for real 
-# 
 # 1 for fake
 
+
 # Train
-
-# In[6]:
-
 
 train_audio_folder = "LA/ASVspoof2019_LA_train/flac"
 train_protocol_file = "LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt"
@@ -68,9 +59,6 @@ X_train, y_train = load_audio_files(train_protocol_file, train_audio_folder)
 
 # Validation
 
-# In[7]:
-
-
 dev_audio_folder = "LA/ASVspoof2019_LA_dev/flac"
 dev_protocol_file = "LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt"
 
@@ -79,56 +67,13 @@ X_test, y_test = load_audio_files(dev_protocol_file, dev_audio_folder)
 
 # Test
 
-# In[8]:
-
-
 eval_audio_folder = "LA/ASVspoof2019_LA_eval/flac"
 eval_protocol_file = "LA/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.eval.trl.txt"
 
 X_eval, y_eval = load_audio_files(eval_protocol_file, eval_audio_folder)
 
 
-# Picture
-
-# In[ ]:
-
-
-sample_path = X_train[0]
-
-waveform, sr = torchaudio.load(sample_path)
-
-plt.figure(figsize=(10,4))
-plt.plot(waveform.t().numpy())
-plt.title("Waveform of Audio Sample")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.show()
-
-
-# In[10]:
-
-
-mel_transform = torchaudio.transforms.MelSpectrogram(
-    sample_rate=16000,
-    n_mels=128
-)
-
-mel = mel_transform(waveform)
-mel = torch.log(mel + 1e-6)
-
-plt.figure(figsize=(10,4))
-plt.imshow(mel[0].numpy(), aspect='auto', origin='lower')
-plt.title("Mel Spectrogram")
-plt.xlabel("Time")
-plt.ylabel("Mel Frequency")
-plt.colorbar()
-plt.show()
-
-
 # Dataset Class
-
-# In[6]:
-
 
 class ASVSpoofDataset(Dataset):
 
@@ -142,7 +87,7 @@ class ASVSpoofDataset(Dataset):
             n_mels=128
         )
 
-        # augmentation for minority class
+        # augmentation
         self.time_mask = torchaudio.transforms.TimeMasking(time_mask_param=30)
         self.freq_mask = torchaudio.transforms.FrequencyMasking(freq_mask_param=15)
 
@@ -161,22 +106,17 @@ class ASVSpoofDataset(Dataset):
 
         label = self.labels[idx]
 
-        # AUGMENT ONLY CLASS 0 (bonafide)
-        if label == 0:
-            mel = self.time_mask(mel)
-            mel = self.freq_mask(mel)
+        # AUGMENTATION (apply to all samples for robustness)
+        mel = self.time_mask(mel)
+        mel = self.freq_mask(mel)
 
-        mel = mel.repeat(3,1,1)
-
+        # keep single channel (NO FAKE RGB)
         label = torch.tensor(label).long()
 
         return mel, label
 
 
 # Using Collate function to have same audio len and dim
-
-# In[7]:
-
 
 def collate_fn(batch):
 
@@ -201,21 +141,12 @@ def collate_fn(batch):
     return mels, labels
 
 
-# In[8]:
-
-
 train_dataset = ASVSpoofDataset(X_train, y_train)
 test_dataset = ASVSpoofDataset(X_test, y_test)
 eval_dataset = ASVSpoofDataset(X_eval, y_eval)
 
 
-# In[9]:
-
-
-batch_size = 256
-
-
-# In[10]:
+batch_size = 128   # reduced for stability
 
 
 train_loader = DataLoader(
@@ -242,25 +173,22 @@ eval_loader = DataLoader(
 
 # Loading the RESNET archi
 
-# In[11]:
-
-
 model = models.resnet18(pretrained=True)
 
 
-# Freezing the training for the convolution layers i.e, weights of the conv layers are not updated during training
+# FIX: change first layer to accept 1 channel instead of 3
 
-# In[12]:
+model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
 
-for param in model.parameters():
-    param.requires_grad = False
+# Freeze only early layers (NOT everything)
+
+for name, param in model.named_parameters():
+    if "layer4" not in name:
+        param.requires_grad = False
 
 
 # Replacing the RESNET classifier with our own classifier
-
-# In[13]:
-
 
 model.fc = nn.Sequential(
 
@@ -272,23 +200,25 @@ model.fc = nn.Sequential(
 )
 
 
-# In[14]:
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = model.to(device)
 
 
-# In[ ]:
+# class imbalance handling
+
+class_counts = np.bincount(y_train)
+weights = 1. / class_counts
+weights = torch.tensor(weights, dtype=torch.float32).to(device)
+
+criterion = nn.CrossEntropyLoss(weight=weights)
+
+optimizer = optim.Adam(model.parameters(), lr=0.0005)
 
 
-criterion = nn.CrossEntropyLoss()
+# scheduler
 
-optimizer = optim.Adam(model.fc.parameters(), lr=0.001)
-
-
-# In[16]:
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
 
 def train_epoch(loader):
@@ -312,6 +242,9 @@ def train_epoch(loader):
 
         loss.backward()
 
+        # gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
         optimizer.step()
 
         total_loss += loss.item()
@@ -326,9 +259,6 @@ def train_epoch(loader):
     accuracy = correct / total
 
     return avg_loss, accuracy
-
-
-# In[17]:
 
 
 def evaluate(loader):
@@ -356,14 +286,13 @@ def evaluate(loader):
     return correct / total
 
 
-# In[18]:
-
-
 epochs = 10
 
 train_losses = []
 train_accuracies = []
 test_accuracies = []
+
+best_acc = 0
 
 for epoch in range(epochs):
 
@@ -371,9 +300,16 @@ for epoch in range(epochs):
 
     test_acc = evaluate(test_loader)
 
+    scheduler.step()
+
     train_losses.append(train_loss)
     train_accuracies.append(train_acc)
     test_accuracies.append(test_acc)
+
+    # save best model
+    if test_acc > best_acc:
+        best_acc = test_acc
+        torch.save(model.state_dict(), "best_model.pth")
 
     print(f"\nEpoch {epoch+1}/{epochs}")
     print(f"Train Loss: {train_loss:.4f}")
@@ -384,9 +320,6 @@ for epoch in range(epochs):
 
 
 # Plot for accuracy
-
-# In[19]:
-
 
 plt.figure(figsize=(8,5))
 
@@ -406,9 +339,6 @@ plt.show()
 
 # Plot for Loss
 
-# In[20]:
-
-
 plt.figure(figsize=(8,5))
 
 plt.plot(range(1, epochs+1), train_losses, label="Train Loss")
@@ -424,112 +354,8 @@ plt.grid(True)
 plt.show()
 
 
-# In[21]:
-
-
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-
-all_preds = []
-all_labels = []
-
-model.eval()
-
-with torch.no_grad():
-
-    for x, y in test_loader:
-
-        x = x.to(device)
-
-        outputs = model(x)
-
-        preds = torch.argmax(outputs, dim=1).cpu()
-
-        all_preds.extend(preds.numpy())
-        all_labels.extend(y.numpy())
-
-cm = confusion_matrix(all_labels, all_preds)
-
-plt.figure(figsize=(6,5))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-
-plt.xlabel("Predicted Label")
-plt.ylabel("True Label")
-plt.title("Confusion Matrix")
-
-plt.show()
-
-
-# In[22]:
-
-
-from sklearn.metrics import classification_report
-
-print(classification_report(all_labels, all_preds))
-
-
-# In[23]:
-
+# Final Evaluation
 
 eval_accuracy = evaluate(eval_loader)
 
 print("\nFinal Evaluation Accuracy (LA_eval):", eval_accuracy)
-
-
-# In[24]:
-
-
-all_preds = []
-all_labels = []
-
-model.eval()
-
-with torch.no_grad():
-
-    for x, y in eval_loader:
-
-        x = x.to(device)
-
-        outputs = model(x)
-
-        preds = torch.argmax(outputs, dim=1).cpu()
-
-        all_preds.extend(preds.numpy())
-        all_labels.extend(y.numpy())
-
-cm = confusion_matrix(all_labels, all_preds)
-
-plt.figure(figsize=(6,5))
-
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-
-plt.xlabel("Predicted Label")
-plt.ylabel("True Label")
-plt.title("Confusion Matrix")
-
-plt.show()
-
-
-# In[25]:
-
-
-print(classification_report(all_labels, all_preds)) 
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
