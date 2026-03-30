@@ -212,7 +212,7 @@ eval_dataset = ASVSpoofDataset(X_eval, y_eval)
 # In[9]:
 
 
-batch_size = 256
+batch_size = 32
 
 
 # In[10]:
