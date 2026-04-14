@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 import torchaudio
-
-torchaudio.set_audio_backend("soundfile")
+import soundfile as sf
 
 class AudioClassifier(nn.Module):
     def __init__(self):
@@ -30,9 +29,17 @@ class AudioClassifier(nn.Module):
 
 
 def preprocess_audio(file_path):
-    waveform, sr = torchaudio.load(file_path)
-
-    waveform = torch.mean(waveform, dim=0, keepdim=True)
+    import soundfile as sf
+    
+    # Load audio using soundfile
+    waveform, sr = sf.read(file_path)
+    waveform = torch.tensor(waveform, dtype=torch.float32)
+    
+    # Convert to proper shape for torchaudio
+    if waveform.dim() == 1:
+        waveform = waveform.unsqueeze(0)
+    else:
+        waveform = torch.mean(waveform, dim=0, keepdim=True)
 
     target_sr = 16000
     if sr != target_sr:
