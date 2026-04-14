@@ -9,7 +9,6 @@ class AudioClassifier(nn.Module):
         super().__init__()
 
         self.model = models.resnet18(pretrained=False)
-        
 
         old_conv = self.model.conv1.weight
         self.model.conv1 = nn.Conv2d(
@@ -26,21 +25,20 @@ class AudioClassifier(nn.Module):
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
-            
+
             nn.Linear(256, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            
+
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
-            
+
             nn.Linear(64, 2)
         )
 
     def forward(self, x):
         return self.model(x)
-
 
 mel_transform = torchaudio.transforms.MelSpectrogram(
     sample_rate=16000,
@@ -48,8 +46,20 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
     n_fft=1024,
     hop_length=512
 )
+
+
 def preprocess_audio(file_path):
-    waveform, sr = torchaudio.load(file_path)
+
+    try:
+        waveform, sr = torchaudio.load(file_path)
+    except:
+        waveform, sr = sf.read(file_path)
+        waveform = torch.tensor(waveform, dtype=torch.float32)
+
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)
+        else:
+            waveform = waveform.mean(dim=1, keepdim=True).T
 
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -59,7 +69,7 @@ def preprocess_audio(file_path):
         resampler = torchaudio.transforms.Resample(sr, target_sr)
         waveform = resampler(waveform)
 
-    max_len = target_sr * 6  
+    max_len = target_sr * 6
     if waveform.shape[1] > max_len:
         waveform = waveform[:, :max_len]
     else:
@@ -73,13 +83,11 @@ def preprocess_audio(file_path):
 
     return mel.unsqueeze(0)
 
-
 def load_model(path):
     checkpoint = torch.load(path, map_location="cpu")
 
-    model = AudioClassifier()  
+    model = AudioClassifier()
+    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
-    model.load_state_dict(checkpoint["model_state_dict"], strict=False) 
     model.eval()
-
     return model
