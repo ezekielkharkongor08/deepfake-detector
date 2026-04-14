@@ -7,10 +7,10 @@ from torchvision import models
 class AudioClassifier(nn.Module):
     def __init__(self):
         super().__init__()
-        # Load ResNet18
+
         self.model = models.resnet18(pretrained=False)
         
-        # Modify first conv layer for single channel input
+
         old_conv = self.model.conv1.weight
         self.model.conv1 = nn.Conv2d(
             in_channels=1,
@@ -21,18 +21,20 @@ class AudioClassifier(nn.Module):
             bias=False
         )
         self.model.conv1.weight.data = old_conv.mean(dim=1, keepdim=True)
-        
-        # Replace classifier
+
         self.model.fc = nn.Sequential(
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
+            
             nn.Linear(256, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
+            
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
+            
             nn.Linear(64, 2)
         )
 
@@ -56,7 +58,6 @@ def preprocess_audio(file_path):
         resampler = torchaudio.transforms.Resample(sr, target_sr)
         waveform = resampler(waveform)
 
-    # 6 seconds for ResNet18
     max_len = target_sr * 6
     if waveform.shape[1] > max_len:
         waveform = waveform[:, :max_len]
@@ -64,7 +65,6 @@ def preprocess_audio(file_path):
         pad = max_len - waveform.shape[1]
         waveform = torch.nn.functional.pad(waveform, (0, pad))
 
-    # 128 mel bands for ResNet18
     mel = torchaudio.transforms.MelSpectrogram(
         sample_rate=target_sr,
         n_mels=128
