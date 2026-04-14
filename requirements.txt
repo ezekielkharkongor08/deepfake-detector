@@ -2,6 +2,7 @@ streamlit
 torch
 torchaudio
 torchvision
+torchcodec
 soundfile
 numpy
 matplotlib
