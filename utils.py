@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torchaudio
 
+torchaudio.set_audio_backend("soundfile")
+
 class AudioClassifier(nn.Module):
     def __init__(self):
         super().__init__()
