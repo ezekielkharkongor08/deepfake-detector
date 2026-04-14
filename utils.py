@@ -17,25 +17,24 @@ class AudioClassifier(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(32 * 32 * 32, 128),
+            nn.Flatten(),
+            nn.LazyLinear(128),
             nn.ReLU(),
             nn.Linear(128, 2)
         )
 
     def forward(self, x):
         x = self.conv(x)
-        x = x.view(x.size(0), -1)
-        return self.fc(x)
+        x = self.fc(x)
+        return x
 
 
 def preprocess_audio(file_path):
     import soundfile as sf
     
-    # Load audio using soundfile
     waveform, sr = sf.read(file_path)
     waveform = torch.tensor(waveform, dtype=torch.float32)
-    
-    # Convert to proper shape for torchaudio
+  
     if waveform.dim() == 1:
         waveform = waveform.unsqueeze(0)
     else:
