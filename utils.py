@@ -10,7 +10,6 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
 )
 
 def preprocess_audio(file_path):
-
     try:
         waveform, sr = torchaudio.load(file_path)
     except:
