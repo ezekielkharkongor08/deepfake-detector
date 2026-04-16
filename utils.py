@@ -4,49 +4,10 @@ import torchaudio
 import soundfile as sf
 from torchvision import models
 
-class AudioClassifier(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.model = models.resnet18(pretrained=False)
-
-        old_conv = self.model.conv1.weight
-        self.model.conv1 = nn.Conv2d(
-            in_channels=1,
-            out_channels=64,
-            kernel_size=7,
-            stride=2,
-            padding=3,
-            bias=False
-        )
-        self.model.conv1.weight.data = old_conv.mean(dim=1, keepdim=True)
-
-        self.model.fc = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-
-            nn.Linear(64, 2)
-        )
-
-    def forward(self, x):
-        return self.model(x)
-
 mel_transform = torchaudio.transforms.MelSpectrogram(
     sample_rate=16000,
-    n_mels=128,
-    n_fft=1024,
-    hop_length=512
+    n_mels=128
 )
-
 
 def preprocess_audio(file_path):
 
@@ -61,33 +22,62 @@ def preprocess_audio(file_path):
         else:
             waveform = waveform.mean(dim=1, keepdim=True).T
 
+    # mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
+    # resample
     target_sr = 16000
     if sr != target_sr:
-        resampler = torchaudio.transforms.Resample(sr, target_sr)
-        waveform = resampler(waveform)
+        waveform = torchaudio.transforms.Resample(sr, target_sr)(waveform)
 
+    # pad / truncate (6 sec)
     max_len = target_sr * 6
     if waveform.shape[1] > max_len:
         waveform = waveform[:, :max_len]
     else:
-        pad = max_len - waveform.shape[1]
-        waveform = torch.nn.functional.pad(waveform, (0, pad))
+        waveform = torch.nn.functional.pad(
+            waveform, (0, max_len - waveform.shape[1])
+        )
 
+    # mel
     mel = mel_transform(waveform)
-
     mel = torch.log(mel + 1e-6)
     mel = (mel - mel.mean()) / (mel.std() + 1e-9)
 
-    return mel.unsqueeze(0)
+    return mel.unsqueeze(0)  # (1, 1, H, W)
 
 def load_model(path):
+
+    model = models.resnet18(pretrained=False)
+
+    model.conv1 = nn.Conv2d(
+        in_channels=1,
+        out_channels=64,
+        kernel_size=7,
+        stride=2,
+        padding=3,
+        bias=False
+    )
+
+    model.fc = nn.Sequential(
+        nn.Linear(512, 256),
+        nn.BatchNorm1d(256),
+        nn.ReLU(),
+
+        nn.Linear(256, 128),
+        nn.BatchNorm1d(128),
+        nn.ReLU(),
+
+        nn.Linear(128, 64),
+        nn.BatchNorm1d(64),
+        nn.ReLU(),
+
+        nn.Linear(64, 2)
+    )
+
     checkpoint = torch.load(path, map_location="cpu")
-
-    model = AudioClassifier()
-    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
-
+    model.load_state_dict(checkpoint["model_state_dict"]) 
     model.eval()
+    
     return model
