@@ -10,7 +10,6 @@ st.title("🎧 Audio Deepfake Detection")
 @st.cache_resource
 def get_model():
     model = load_model("model.pth")
-    model.to(device) 
     return model
 
 model = get_model()
@@ -30,7 +29,7 @@ if uploaded_file:
 
     with st.spinner("Analyzing..."):
 
-        x = preprocess_audio(path).to(device)
+        x = preprocess_audio(path)
 
         with torch.no_grad():
             out = model(x)
