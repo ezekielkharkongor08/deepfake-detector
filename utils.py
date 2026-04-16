@@ -87,7 +87,7 @@ def load_model(path):
     checkpoint = torch.load(path, map_location="cpu")
 
     model = AudioClassifier()
-    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
 
     model.eval()
     return model
