@@ -10,6 +10,7 @@ st.title("🎧 Audio Deepfake Detection")
 @st.cache_resource
 def get_model():
     model = load_model("model.pth")
+    model.to(device) 
     return model
 
 model = get_model()
@@ -29,19 +30,18 @@ if uploaded_file:
 
     with st.spinner("Analyzing..."):
 
-        x = preprocess_audio(path)
+        x = preprocess_audio(path).to(device)
 
         with torch.no_grad():
             out = model(x)
 
-            temperature = 1.5
-            probs = torch.softmax(out / temperature, dim=1)
+            probs = torch.softmax(out, dim=1)
 
             pred = torch.argmax(probs, dim=1).item()
             confidence = probs[0][pred].item()
 
 
-    if confidence < 0.6:
+    if confidence < 0.55:
         st.warning("Low confidence prediction (model uncertain)")
 
     elif pred == 0:
