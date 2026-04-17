@@ -10,16 +10,8 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
 )
 
 def preprocess_audio(file_path):
-    try:
-        waveform, sr = torchaudio.load(file_path)
-    except:
-        waveform, sr = sf.read(file_path)
-        waveform = torch.tensor(waveform, dtype=torch.float32)
-
-        if waveform.ndim == 1:
-            waveform = waveform.unsqueeze(0)
-        else:
-            waveform = waveform.mean(dim=1, keepdim=True).T
+    
+    waveform, sr = torchaudio.load(file_path)
 
     # mono
     if waveform.shape[0] > 1:
