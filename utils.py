@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torchaudio
-import soundfile as sf
 from torchvision import models
+import librosa
 
 mel_transform = torchaudio.transforms.MelSpectrogram(
     sample_rate=16000,
@@ -11,19 +11,11 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
 
 def preprocess_audio(file_path):
     
-    waveform, sr = torchaudio.load(file_path)
+    waveform, sr = librosa.load(file_path, sr=16000)
+    waveform = torch.tensor(waveform).unsqueeze(0)
 
-    # mono
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    # resample
-    target_sr = 16000
-    if sr != target_sr:
-        waveform = torchaudio.transforms.Resample(sr, target_sr)(waveform)
-
-    # pad / truncate (6 sec)
-    max_len = target_sr * 6
+    max_len = 16000 * 6
+    
     if waveform.shape[1] > max_len:
         waveform = waveform[:, :max_len]
     else:
@@ -36,7 +28,7 @@ def preprocess_audio(file_path):
     mel = torch.log(mel + 1e-6)
     mel = (mel - mel.mean()) / (mel.std() + 1e-9)
 
-    return mel.unsqueeze(0)  # (1, 1, H, W)
+    return mel.unsqueeze(0)
 
 def load_model(path):
 
